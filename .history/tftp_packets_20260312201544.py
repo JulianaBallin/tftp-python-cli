@@ -164,9 +164,8 @@ class TFTPPacket:
         if not (0 <= error_code <= 7):
             raise ValueError(f"Invalid error code: {error_code}")
         
-        # Allow empty message (RFC 1350 allows empty message)
-        if error_msg is None:
-            error_msg = ""
+        if not error_msg:
+            error_msg = "Unknown error"
         
         # Format: opcode (2 bytes) + error code (2 bytes) + error message + 0
         return struct.pack(f'>HH{len(error_msg)}sB', 
