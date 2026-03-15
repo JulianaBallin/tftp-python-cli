@@ -194,3 +194,27 @@ class TFTPClient:
         logger.error("GET operation not implemented yet.")
         sys.exit(1)
 
+
+def parse_arguments():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description="TFTP Client Implementation")
+    subparsers = parser.add_subparsers(
+        dest="command", required=True, help="Command to execute"
+    )
+
+    # GET command
+    get_parser = subparsers.add_parser("get", help="Download a file from the server")
+    get_parser.add_argument("--host", required=True, help="Server host IP")
+    get_parser.add_argument("--port", type=int, default=69, help="Server port")
+    get_parser.add_argument("--remote", required=True, help="Remote file name")
+    get_parser.add_argument("--local", required=True, help="Local file name")
+
+    # PUT command
+    put_parser = subparsers.add_parser("put", help="Upload a file to the server")
+    put_parser.add_argument("--host", required=True, help="Server host IP")
+    put_parser.add_argument("--port", type=int, default=69, help="Server port")
+    put_parser.add_argument("--local", required=True, help="Local file name")
+    put_parser.add_argument("--remote", required=True, help="Remote file name")
+
+    return parser.parse_args()
+
