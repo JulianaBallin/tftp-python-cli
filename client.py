@@ -218,3 +218,35 @@ def parse_arguments():
 
     return parser.parse_args()
 
+
+def main():
+    """Main entry point for TFTP client."""
+    args = parse_arguments()
+
+    client = TFTPClient(args.host, args.port)
+
+    try:
+        if args.command == "get":
+            client.get(args.remote, args.local)
+        elif args.command == "put":
+            client.put(args.local, args.remote)
+
+    except KeyboardInterrupt:
+        logger.info("Transfer interrupted by user")
+        sys.exit(0)
+    except ConnectionResetError:
+        logger.error(
+            "Target server not found or unavailable. "
+            "Make sure the TFTP server is running on the correct port."
+        )
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Client error: {e}")
+        sys.exit(1)
+    finally:
+        if hasattr(client, "socket") and client.socket:
+            client.socket.close()
+
+
+if __name__ == "__main__":
+    main()
