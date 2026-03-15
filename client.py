@@ -44,3 +44,48 @@ class TFTPClient:
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.settimeout(self.TIMEOUT)
 
+    def _send_wrq_and_wait_ack(self, remote_filename: str) -> tuple:
+        """Sends WRQ and waits for ACK 0 to establish the transfer ID (server TID)."""
+        wrq_packet = TFTPPacket.encode_wrq(remote_filename)
+        self.socket.sendto(wrq_packet, self.server_address)
+
+        server_tid = None
+        retries = 0
+        while retries <= self.MAX_RETRIES:
+            try:
+                data, address = self.socket.recvfrom(4096)
+
+                if server_tid is None:
+                    server_tid = address
+                elif address != server_tid:
+                    logger.warning(f"Received packet from unknown address: {address}")
+                    error_packet = TFTPPacket.encode_error(
+                        ErrorCode.UNKNOWN_TID, "Unknown Transfer ID"
+                    )
+                    self.socket.sendto(error_packet, address)
+                    continue
+
+                opcode, decoded_data = TFTPPacket.decode(data)
+
+                if opcode == Opcode.ERROR:
+                    error_code, error_msg = decoded_data
+                    logger.error(f"Server returned error {error_code}: {error_msg}")
+                    sys.exit(1)
+
+                if opcode == Opcode.ACK and decoded_data == 0:
+                    logger.debug("Received ACK 0, server ready for data")
+                    return server_tid
+                else:
+                    logger.warning(f"Expected ACK 0, got opcode {opcode}")
+
+            except socket.timeout:
+                retries += 1
+                if retries > self.MAX_RETRIES:
+                    logger.error("Timeout waiting for server to acknowledge WRQ")
+                    sys.exit(1)
+                logger.info("Timeout, retransmitting WRQ")
+                self.socket.sendto(wrq_packet, self.server_address)
+
+        logger.error("Transfer failed: could not establish connection with server")
+        sys.exit(1)
+
