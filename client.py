@@ -89,3 +89,52 @@ class TFTPClient:
         logger.error("Transfer failed: could not establish connection with server")
         sys.exit(1)
 
+    def _send_data_block_and_wait_ack(
+        self, expected_block: int, data_packet: bytes, server_tid: tuple
+    ) -> bool:
+        """Sends a single DATA block and waits for the corresponding ACK."""
+        retries = 0
+        while retries <= self.MAX_RETRIES:
+            self.socket.sendto(data_packet, server_tid)
+            logger.debug(f"Sent DATA block {expected_block}")
+
+            try:
+                data, address = self.socket.recvfrom(4096)
+
+                if address != server_tid:
+                    logger.warning(
+                        f"Received packet from {address}, expected {server_tid}"
+                    )
+                    error_packet = TFTPPacket.encode_error(
+                        ErrorCode.UNKNOWN_TID, "Unknown Transfer ID"
+                    )
+                    self.socket.sendto(error_packet, address)
+                    continue
+
+                opcode, decoded_data = TFTPPacket.decode(data)
+
+                if opcode == Opcode.ERROR:
+                    error_code, error_msg = decoded_data
+                    logger.error(f"Server returned error {error_code}: {error_msg}")
+                    sys.exit(1)
+
+                if opcode == Opcode.ACK:
+                    ack_block = decoded_data
+                    if ack_block == expected_block:
+                        logger.debug(f"Received ACK for block {expected_block}")
+                        return True
+                    else:
+                        logger.warning(
+                            f"Received ACK for block {ack_block}, "
+                            f"expected {expected_block}"
+                        )
+
+            except socket.timeout:
+                retries += 1
+                if retries > self.MAX_RETRIES:
+                    logger.error(f"Timeout waiting for ACK {expected_block}")
+                    sys.exit(1)
+                logger.info(f"Timeout, retransmitting DATA block {expected_block}")
+
+        return False
+
