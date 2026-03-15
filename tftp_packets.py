@@ -40,16 +40,6 @@ class ErrorCode(IntEnum):
     FILE_EXISTS = 6
     NO_SUCH_USER = 7
 
-class TFTPErrorCode:
-    NOT_DEFINED = 0
-    FILE_NOT_FOUND = 1
-    ACCESS_VIOLATION = 2
-    DISK_FULL = 3
-    ILLEGAL_OP = 4
-    UNKNOWN_TID = 5
-    FILE_EXISTS = 6
-    NO_USER = 7
-
 class TFTPPacket:
     """TFTP packet encoder/decoder."""
     
