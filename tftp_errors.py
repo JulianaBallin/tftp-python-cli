@@ -42,3 +42,28 @@ class ErrorMessages:
         TFTPErrorCode.NO_USER: "User not authenticated"
     }
 
+def setup_error_logging(log_file: str = "tftp_errors.log", verbose: bool = True) -> logging.Logger:
+    """
+    Configure logging system for error tracking.
+
+    Args:
+        log_file: Path to log file
+        verbose: If True, also output to console
+
+    Returns:
+        logging.Logger: Configured logger instance
+    """
+    handlers = [logging.FileHandler(log_file)]
+    if verbose:
+        handlers.append(logging.StreamHandler())
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=handlers
+    )
+    return logging.getLogger('TFTP-Errors')
+
+
+# Global logger instance
+logger = setup_error_logging()
