@@ -383,3 +383,30 @@ def print_user_error(error_code: Union[int, TFTPErrorCode], custom_message: str 
     tip = tips.get(TFTPErrorCode(code))
     if tip:
         print(f"{tip}")
+
+def catch_tftp_errors(func):
+    """
+    Decorator to catch and handle TFTP exceptions.
+
+    Example:
+        >>> @catch_tftp_errors
+        >>> def main():
+        >>>     # Your code here
+        >>>     pass
+    """
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except KeyboardInterrupt:
+            print("\n⚠️ Operation interrupted by user")
+            sys.exit(0)
+        except TFTPError as e:
+            print_user_error(e.error_code, e.message)
+            logger.error(f"TFTPError: {e.message} (code {e.error_code})")
+            sys.exit(e.error_code)
+        except Exception as e:
+            msg, code = handle_socket_error(e)
+            print_user_error(code, msg)
+            logger.exception("Unhandled exception")
+            sys.exit(code)
+    return wrapper
