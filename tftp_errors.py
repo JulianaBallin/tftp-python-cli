@@ -342,3 +342,44 @@ def handle_socket_error(e: Exception, context: str = "") -> Tuple[str, int]:
         return f"Permission denied{error_context}", 4
     else:
         return f"Network error{error_context}: {str(e)}", 99
+
+def print_user_error(error_code: Union[int, TFTPErrorCode], custom_message: str = "") -> None:
+    """
+    Display formatted error message for end user.
+
+    Args:
+        error_code: Error code
+        custom_message: Additional context message
+
+    Example:
+        >>> print_user_error(1, "config.txt")
+        Output: "ERROR: File not found - config.txt"
+    """
+    if isinstance(error_code, TFTPErrorCode):
+        code = error_code.value
+        base_msg = ErrorMessages.messages.get(error_code, "Unknown error")
+    else:
+        code = error_code
+        try:
+            base_msg = ErrorMessages.messages[TFTPErrorCode(code)]
+        except KeyError:
+            base_msg = f"Error {code}"
+
+    if custom_message:
+        full_message = f"{base_msg} - {custom_message}"
+    else:
+        full_message = base_msg
+
+    print(f"ERROR: {full_message}")
+
+    # Tips for specific error codes
+    tips = {
+        TFTPErrorCode.FILE_NOT_FOUND: "Tip: Check if file exists on server",
+        TFTPErrorCode.ACCESS_VIOLATION: "Tip: Check file/directory permissions",
+        TFTPErrorCode.DISK_FULL: "Tip: Free up disk space",
+        TFTPErrorCode.UNKNOWN_TID: "Tip: Connection issue - try again",
+    }
+
+    tip = tips.get(TFTPErrorCode(code))
+    if tip:
+        print(f"{tip}")
