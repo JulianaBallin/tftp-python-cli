@@ -410,3 +410,29 @@ def catch_tftp_errors(func):
             logger.exception("Unhandled exception")
             sys.exit(code)
     return wrapper
+
+if __name__ == "__main__":
+    """Example usage of the error handling module."""
+    print("Testing TFTP Error Handling Module\n")
+
+    # Test 1: Encode error
+    error_packet = encode_error(1, "File test.txt not found")
+    print(f"Encoded error packet: {error_packet.hex()}")
+
+    # Test 2: Decode error
+    code, msg = decode_error(error_packet)
+    print(f"Decoded error: code {code} = '{msg}'")
+
+    # Test 3: User message
+    print("\n" + "="*40)
+    print_user_error(TFTPErrorCode.FILE_NOT_FOUND, "config.txt")
+
+    # Test 4: Timeout handler
+    print("\n" + "="*40)
+    th = TimeoutHandler(max_retries=3)
+    for i in range(4):
+        print(f"Attempt {i+1}: should retry? {th.should_retry()}, "
+              f"timeout: {th.get_current_timeout():.1f}s")
+
+    print("\n Module loaded successfully!")
+    print("Usage: from tftp_errors import *")
