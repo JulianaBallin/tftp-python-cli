@@ -298,3 +298,47 @@ def validate_file_for_write(filepath: str, overwrite: bool = False) -> Tuple[boo
         pass
 
     return True, None, None
+
+class TFTPError(Exception):
+    """Base exception for TFTP-specific errors."""
+
+    def __init__(self, message: str, error_code: int = 0):
+        self.error_code = error_code
+        self.message = message
+        super().__init__(message)
+
+    def to_packet(self) -> bytes:
+        """Convert exception to TFTP error packet."""
+        return encode_error(self.error_code, self.message)
+
+
+def handle_socket_error(e: Exception, context: str = "") -> Tuple[str, int]:
+    """
+    Handle common socket errors and return user-friendly messages.
+
+    Args:
+        e: Caught exception
+        context: Context where error occurred (e.g., "download", "upload")
+
+    Returns:
+        Tuple[str, int]: (user_friendly_message, error_code)
+
+    Example:
+        >>> try:
+        >>>     sock.recvfrom(1024)
+        >>> except Exception as e:
+        >>>     msg, code = handle_socket_error(e, "receiving data")
+        >>>     print(f"Error: {msg}")
+    """
+    error_context = f" during {context}" if context else ""
+
+    if isinstance(e, socket.timeout):
+        return f"Timeout{error_context}: server not responding", 1
+    elif isinstance(e, ConnectionRefusedError):
+        return f"Connection refused{error_context}: server unavailable", 2
+    elif isinstance(e, socket.gaierror):
+        return f"DNS error{error_context}: invalid address", 3
+    elif isinstance(e, PermissionError):
+        return f"Permission denied{error_context}", 4
+    else:
+        return f"Network error{error_context}: {str(e)}", 99
