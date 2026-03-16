@@ -232,3 +232,69 @@ class TimeoutHandler:
             "current_timeout": self.get_current_timeout(),
             "last_attempt": self.last_attempt_time.isoformat() if self.last_attempt_time else None
         }
+
+def validate_file_for_read(filepath: str) -> Tuple[bool, Optional[str], Optional[int]]:
+    """
+    Validate if a file can be read (for server RRQ handling).
+
+    Args:
+        filepath: Full path to file
+
+    Returns:
+        Tuple[bool, error_msg, error_code]:
+            - (True, None, None) if valid
+            - (False, error_message, error_code) if invalid
+
+    Example (server):
+        >>> ok, msg, code = validate_file_for_read("storage/file.txt")
+        >>> if not ok:
+        >>>     send_error_response(sock, client_addr, code, msg)
+        >>>     return
+    """
+    if not os.path.exists(filepath):
+        return False, f"File not found: {os.path.basename(filepath)}", TFTPErrorCode.FILE_NOT_FOUND
+
+    if not os.path.isfile(filepath):
+        return False, f"Not a regular file: {filepath}", TFTPErrorCode.ACCESS_VIOLATION
+
+    if not os.access(filepath, os.R_OK):
+        return False, f"Read permission denied: {filepath}", TFTPErrorCode.ACCESS_VIOLATION
+
+    return True, None, None
+
+
+def validate_file_for_write(filepath: str, overwrite: bool = False) -> Tuple[bool, Optional[str], Optional[int]]:
+    """
+    Validate if a file can be written (for server WRQ handling).
+
+    Args:
+        filepath: Full path to file
+        overwrite: If True, allow overwriting existing file
+
+    Returns:
+        Tuple[bool, error_msg, error_code]
+    """
+    # Check directory existence and permissions
+    directory = os.path.dirname(filepath)
+    if directory and not os.path.exists(directory):
+        return False, f"Directory does not exist: {directory}", TFTPErrorCode.ACCESS_VIOLATION
+
+    if directory and not os.access(directory, os.W_OK):
+        return False, f"Write permission denied in directory: {directory}", TFTPErrorCode.ACCESS_VIOLATION
+
+    # Check if file already exists
+    if os.path.exists(filepath) and not overwrite:
+        return False, f"File already exists: {filepath}", TFTPErrorCode.FILE_EXISTS
+
+    # Basic disk space check (Unix-like systems only)
+    try:
+        if directory:
+            stat = os.statvfs(directory)
+            free_space = stat.f_frsize * stat.f_bavail
+            if free_space < 1024:  # Minimum 1KB free
+                return False, "Insufficient disk space", TFTPErrorCode.DISK_FULL
+    except (AttributeError, OSError):
+        # statvfs not available on Windows or error occurred
+        pass
+
+    return True, None, None
