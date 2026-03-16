@@ -1,1 +1,0 @@
-Este é um arquivo de texto de exemplo utilizado para realizar testes de integração da funcionalidade de Client Upload (client-put) enviando dados para o servidor mockado em mock_server.py

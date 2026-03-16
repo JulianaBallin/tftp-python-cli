@@ -15,18 +15,15 @@ Date: March 2026
 """
 
 import argparse
-import logging
 import socket
 import os
 import sys
 
-from tftp_packets import TFTPPacket, Opcode, ErrorCode
+from tftp_packets import TFTPPacket, Opcode
+from tftp_errors import TFTPErrorCode, ErrorMessages, setup_error_logging
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
+logger = setup_error_logging()
 
 
 class TFTPClient:
@@ -60,7 +57,8 @@ class TFTPClient:
                 elif address != server_tid:
                     logger.warning(f"Received packet from unknown address: {address}")
                     error_packet = TFTPPacket.encode_error(
-                        ErrorCode.UNKNOWN_TID, "Unknown Transfer ID"
+                        TFTPErrorCode.UNKNOWN_TID,
+                        ErrorMessages.messages[TFTPErrorCode.UNKNOWN_TID],
                     )
                     self.socket.sendto(error_packet, address)
                     continue
@@ -106,7 +104,8 @@ class TFTPClient:
                         f"Received packet from {address}, expected {server_tid}"
                     )
                     error_packet = TFTPPacket.encode_error(
-                        ErrorCode.UNKNOWN_TID, "Unknown Transfer ID"
+                        TFTPErrorCode.UNKNOWN_TID,
+                        ErrorMessages.messages[TFTPErrorCode.UNKNOWN_TID],
                     )
                     self.socket.sendto(error_packet, address)
                     continue
