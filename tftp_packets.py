@@ -40,7 +40,6 @@ class ErrorCode(IntEnum):
     FILE_EXISTS = 6
     NO_SUCH_USER = 7
 
-
 class TFTPPacket:
     """TFTP packet encoder/decoder."""
     
