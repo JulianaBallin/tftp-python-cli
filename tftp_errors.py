@@ -67,3 +67,66 @@ def setup_error_logging(log_file: str = "tftp_errors.log", verbose: bool = True)
 
 # Global logger instance
 logger = setup_error_logging()
+
+def encode_error(error_code: Union[int, TFTPErrorCode], error_message: str = "") -> bytes:
+    """
+    Encode a TFTP ERROR packet (opcode 5).
+
+    Args:
+        error_code: Error code (0-7)
+        error_message: Optional descriptive message
+
+    Returns:
+        bytes: Encoded error packet ready for network transmission
+
+    Example:
+        >>> packet = encode_error(1, "File not found")
+        >>> sock.sendto(packet, client_address)
+    """
+    if isinstance(error_code, TFTPErrorCode):
+        error_code = error_code.value
+
+    # Packet structure: opcode (2 bytes) + error_code (2 bytes) + error_msg + null byte
+    opcode = 5  # ERROR packet
+    error_msg_encoded = error_message.encode('utf-8') + b'\x00'
+
+    return struct.pack(f'>HH{len(error_msg_encoded)}s', opcode, error_code, error_msg_encoded)
+
+def decode_error(packet: bytes) -> Tuple[int, str]:
+    """
+    Decode a TFTP ERROR packet.
+
+    Args:
+        packet: Raw packet bytes received from network
+
+    Returns:
+        Tuple[int, str]: (error_code, error_message)
+
+    Raises:
+        ValueError: If packet is invalid or not an ERROR packet
+
+    Example:
+        >>> try:
+        >>>     code, msg = decode_error(received_data)
+        >>>     print(f"Error {code}: {msg}")
+        >>> except ValueError as e:
+        >>>     print(f"Invalid packet: {e}")
+    """
+    if len(packet) < 4:
+        raise ValueError(f"Packet too short for ERROR: {len(packet)} bytes")
+
+    opcode = struct.unpack('>H', packet[:2])[0]
+    if opcode != 5:
+        raise ValueError(f"Expected opcode 5 (ERROR), got {opcode}")
+
+    error_code = struct.unpack('>H', packet[2:4])[0]
+
+    # Extract message (up to null byte)
+    msg_bytes = packet[4:]
+    null_pos = msg_bytes.find(b'\x00')
+    if null_pos == -1:
+        error_msg = msg_bytes.decode('utf-8', errors='ignore')
+    else:
+        error_msg = msg_bytes[:null_pos].decode('utf-8', errors='ignore')
+
+    return error_code, error_msg
