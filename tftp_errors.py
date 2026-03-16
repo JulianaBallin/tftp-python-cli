@@ -130,3 +130,45 @@ def decode_error(packet: bytes) -> Tuple[int, str]:
         error_msg = msg_bytes[:null_pos].decode('utf-8', errors='ignore')
 
     return error_code, error_msg
+
+def send_error_response(sock: socket.socket, client_addr: Tuple[str, int],
+                        error_code: Union[int, TFTPErrorCode],
+                        error_message: str = "") -> bool:
+    """
+    Send an error packet to client and log the event.
+
+    Args:
+        sock: UDP socket
+        client_addr: Client address (ip, port)
+        error_code: Error code
+        error_message: Descriptive message
+
+    Returns:
+        bool: True if sent successfully, False otherwise
+
+    Example (server):
+        >>> if not os.path.exists(filename):
+        >>>     send_error_response(sock, client_addr,
+        >>>                         TFTPErrorCode.FILE_NOT_FOUND,
+        >>>                         f"File {filename} not found")
+    """
+    try:
+        error_packet = encode_error(error_code, error_message)
+        sock.sendto(error_packet, client_addr)
+
+        # Log the error
+        if isinstance(error_code, TFTPErrorCode):
+            code_name = error_code.name
+            code_value = error_code.value
+        else:
+            code_name = "UNKNOWN"
+            code_value = error_code
+
+        logger.warning(
+            f"Error {code_value} ({code_name}) sent to "
+            f"{client_addr[0]}:{client_addr[1]} - {error_message}"
+        )
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send error packet: {e}")
+        return False
