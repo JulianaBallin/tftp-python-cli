@@ -172,3 +172,63 @@ def send_error_response(sock: socket.socket, client_addr: Tuple[str, int],
     except Exception as e:
         logger.error(f"Failed to send error packet: {e}")
         return False
+
+class TimeoutHandler:
+    """
+    Manages timeouts and retransmissions for TFTP client.
+
+    Implements exponential backoff for retry attempts.
+
+    Example:
+        >>> timeout_handler = TimeoutHandler(max_retries=3, timeout=2)
+        >>> for attempt in range(timeout_handler.max_retries):
+        >>>     try:
+        >>>         sock.sendto(packet, server_addr)
+        >>>         response, addr = sock.recvfrom(1024)
+        >>>         timeout_handler.reset()  # Success
+        >>>         break
+        >>>     except socket.timeout:
+        >>>         if not timeout_handler.should_retry():
+        >>>             raise Exception("Server not responding")
+        >>>         print(f"Timeout, retry {attempt+1}/{timeout_handler.max_retries}")
+    """
+
+    def __init__(self, max_retries: int = 3, timeout: float = 2.0,
+                 backoff_factor: float = 1.5):
+        """
+        Initialize timeout handler.
+
+        Args:
+            max_retries: Maximum number of retry attempts
+            timeout: Initial timeout in seconds
+            backoff_factor: Multiplier for timeout on each retry
+        """
+        self.max_retries = max_retries
+        self.initial_timeout = timeout
+        self.backoff_factor = backoff_factor
+        self.attempt = 0
+        self.last_attempt_time: Optional[datetime] = None
+
+    def should_retry(self) -> bool:
+        """Check if another retry attempt is allowed."""
+        self.attempt += 1
+        self.last_attempt_time = datetime.now()
+        return self.attempt < self.max_retries
+
+    def get_current_timeout(self) -> float:
+        """Get timeout for current attempt (with backoff applied)."""
+        return self.initial_timeout * (self.backoff_factor ** self.attempt)
+
+    def reset(self) -> None:
+        """Reset attempt counter after successful operation."""
+        self.attempt = 0
+        self.last_attempt_time = None
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get current statistics of the timeout handler."""
+        return {
+            "attempts": self.attempt,
+            "max_retries": self.max_retries,
+            "current_timeout": self.get_current_timeout(),
+            "last_attempt": self.last_attempt_time.isoformat() if self.last_attempt_time else None
+        }
