@@ -24,7 +24,7 @@ O projeto foi desenvolvido considerando:
 | 👤 João Lucas Noronha de Castro | 2315310009 |
 | 👤 Juliana Ballin Lima | 2315310011 |
 | 👤 Leonardo Castro da Silva | 2215310016 |
-| 👤 Leonardo Melo Crispim | 0000000000 |
+| 👤 Leonardo Melo Crispim | 2315310036 |
 | 👤 Lucas Carvalho dos Santos | 2315310012 |
 | 👤 Renato Barbosa de Carvalho | 2315310021 |
 | 👤 Vinicius Souza Costa | 2315310024 |
