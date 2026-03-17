@@ -214,7 +214,7 @@ Utilizamos o padrão [Conventional Commits](https://www.conventionalcommits.org/
 - `feat/initial-structure` - estrutura inicial do projeto (Juliana)
 - `feat/packet-encoding-decoding` - implementação dos pacotes (Juliana)
 - `feat/client-get` - cliente download (João Lucas)
-- `feat/client-put` - cliente upload (João Lucas)
+- `feat/client-put` - cliente upload (Lucas Carvalho)
 - `feat/server-read` - servidor leitura (Leonardo Castro)
 - `feat/server-write` - servidor escrita (Leonardo Melo)
 - `feat/error-handling` - tratamento de erros (Renato)
