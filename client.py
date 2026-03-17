@@ -17,10 +17,17 @@ Date: March 2026
 import argparse
 import socket
 import os
-import sys
 
 from tftp_packets import TFTPPacket, Opcode
-from tftp_errors import TFTPErrorCode, ErrorMessages, setup_error_logging
+from tftp_errors import (
+    TFTPErrorCode,
+    ErrorMessages,
+    setup_error_logging,
+    TimeoutHandler,
+    TFTPError,
+    catch_tftp_errors,
+    send_error_response,
+)
 
 # Configure logging
 logger = setup_error_logging()
@@ -39,7 +46,6 @@ class TFTPClient:
 
         # Initialize UDP socket
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.socket.settimeout(self.TIMEOUT)
 
     def _send_wrq_and_wait_ack(self, remote_filename: str) -> tuple:
         """Sends WRQ and waits for ACK 0 to establish the transfer ID (server TID)."""
@@ -47,8 +53,12 @@ class TFTPClient:
         self.socket.sendto(wrq_packet, self.server_address)
 
         server_tid = None
-        retries = 0
-        while retries <= self.MAX_RETRIES:
+        timeout_handler = TimeoutHandler(
+            max_retries=self.MAX_RETRIES, timeout=self.TIMEOUT
+        )
+
+        while True:
+            self.socket.settimeout(timeout_handler.get_current_timeout())
             try:
                 data, address = self.socket.recvfrom(4096)
 
@@ -56,19 +66,19 @@ class TFTPClient:
                     server_tid = address
                 elif address != server_tid:
                     logger.warning(f"Received packet from unknown address: {address}")
-                    error_packet = TFTPPacket.encode_error(
+                    send_error_response(
+                        self.socket,
+                        address,
                         TFTPErrorCode.UNKNOWN_TID,
-                        ErrorMessages.messages[TFTPErrorCode.UNKNOWN_TID],
+                        ErrorMessages.messages.get(TFTPErrorCode.UNKNOWN_TID, ""),
                     )
-                    self.socket.sendto(error_packet, address)
                     continue
 
                 opcode, decoded_data = TFTPPacket.decode(data)
 
                 if opcode == Opcode.ERROR:
                     error_code, error_msg = decoded_data
-                    logger.error(f"Server returned error {error_code}: {error_msg}")
-                    sys.exit(1)
+                    raise TFTPError(error_msg, error_code)
 
                 if opcode == Opcode.ACK and decoded_data == 0:
                     logger.debug("Received ACK 0, server ready for data")
@@ -77,25 +87,30 @@ class TFTPClient:
                     logger.warning(f"Expected ACK 0, got opcode {opcode}")
 
             except socket.timeout:
-                retries += 1
-                if retries > self.MAX_RETRIES:
-                    logger.error("Timeout waiting for server to acknowledge WRQ")
-                    sys.exit(1)
-                logger.info("Timeout, retransmitting WRQ")
+                if not timeout_handler.should_retry():
+                    raise TFTPError(
+                        "Timeout waiting for server to acknowledge WRQ",
+                        TFTPErrorCode.NOT_DEFINED,
+                    )
+                logger.info(
+                    f"Timeout, retransmitting WRQ (Attempt "
+                    f"{timeout_handler.attempt}/{timeout_handler.max_retries})"
+                )
                 self.socket.sendto(wrq_packet, self.server_address)
-
-        logger.error("Transfer failed: could not establish connection with server")
-        sys.exit(1)
 
     def _send_data_block_and_wait_ack(
         self, expected_block: int, data_packet: bytes, server_tid: tuple
-    ) -> bool:
+    ) -> None:
         """Sends a single DATA block and waits for the corresponding ACK."""
-        retries = 0
-        while retries <= self.MAX_RETRIES:
-            self.socket.sendto(data_packet, server_tid)
-            logger.debug(f"Sent DATA block {expected_block}")
+        self.socket.sendto(data_packet, server_tid)
+        logger.debug(f"Sent DATA block {expected_block}")
 
+        timeout_handler = TimeoutHandler(
+            max_retries=self.MAX_RETRIES, timeout=self.TIMEOUT
+        )
+
+        while True:
+            self.socket.settimeout(timeout_handler.get_current_timeout())
             try:
                 data, address = self.socket.recvfrom(4096)
 
@@ -103,25 +118,25 @@ class TFTPClient:
                     logger.warning(
                         f"Received packet from {address}, expected {server_tid}"
                     )
-                    error_packet = TFTPPacket.encode_error(
+                    send_error_response(
+                        self.socket,
+                        address,
                         TFTPErrorCode.UNKNOWN_TID,
-                        ErrorMessages.messages[TFTPErrorCode.UNKNOWN_TID],
+                        ErrorMessages.messages.get(TFTPErrorCode.UNKNOWN_TID, ""),
                     )
-                    self.socket.sendto(error_packet, address)
                     continue
 
                 opcode, decoded_data = TFTPPacket.decode(data)
 
                 if opcode == Opcode.ERROR:
                     error_code, error_msg = decoded_data
-                    logger.error(f"Server returned error {error_code}: {error_msg}")
-                    sys.exit(1)
+                    raise TFTPError(error_msg, error_code)
 
                 if opcode == Opcode.ACK:
                     ack_block = decoded_data
                     if ack_block == expected_block:
                         logger.debug(f"Received ACK for block {expected_block}")
-                        return True
+                        return
                     else:
                         logger.warning(
                             f"Received ACK for block {ack_block}, "
@@ -129,24 +144,30 @@ class TFTPClient:
                         )
 
             except socket.timeout:
-                retries += 1
-                if retries > self.MAX_RETRIES:
-                    logger.error(f"Timeout waiting for ACK {expected_block}")
-                    sys.exit(1)
-                logger.info(f"Timeout, retransmitting DATA block {expected_block}")
-
-        return False
+                if not timeout_handler.should_retry():
+                    raise TFTPError(
+                        f"Timeout waiting for ACK {expected_block}",
+                        TFTPErrorCode.NOT_DEFINED,
+                    )
+                logger.info(
+                    f"Timeout, retransmitting DATA block {expected_block} "
+                    f"(Attempt {timeout_handler.attempt}/{timeout_handler.max_retries})"
+                )
+                self.socket.sendto(data_packet, server_tid)
 
     def put(self, local_filename: str, remote_filename: str) -> None:
         """
         Upload a file to the server (WRQ).
         """
         if not os.path.exists(local_filename):
-            logger.error(f"Local file '{local_filename}' does not exist.")
-            sys.exit(1)
+            raise TFTPError(
+                f"Local file '{local_filename}' does not exist.",
+                TFTPErrorCode.FILE_NOT_FOUND,
+            )
 
         logger.info(
-            f"Starting upload of {local_filename} to {self.host}:{self.port} as {remote_filename}"
+            f"Starting upload of {local_filename} to "
+            f"{self.host}:{self.port} as {remote_filename}"
         )
 
         # 1. Send WRQ and get server Transaction ID
@@ -163,13 +184,9 @@ class TFTPClient:
                     data_packet = TFTPPacket.encode_data(expected_block, file_data)
 
                     # Send the data block and wait for ACK
-                    ack_received = self._send_data_block_and_wait_ack(
+                    self._send_data_block_and_wait_ack(
                         expected_block, data_packet, server_tid
                     )
-
-                    if not ack_received:
-                        logger.error("Transfer failed after maximum retries")
-                        sys.exit(1)
 
                     # Transfer complete if we read less than 512 bytes
                     if data_len < 512:
@@ -182,16 +199,17 @@ class TFTPClient:
                     expected_block = (expected_block % 65535) + 1
 
         except IOError as e:
-            logger.error(f"Error reading file '{local_filename}': {e}")
-            sys.exit(1)
+            raise TFTPError(
+                f"Error reading file '{local_filename}': {e}",
+                TFTPErrorCode.ACCESS_VIOLATION,
+            )
 
     def get(self, remote_filename: str, local_filename: str) -> None:
         """
         Download a file from the server (RRQ).
         To be implemented by another team member.
         """
-        logger.error("GET operation not implemented yet.")
-        sys.exit(1)
+        raise TFTPError("GET operation not implemented yet.", TFTPErrorCode.ILLEGAL_OP)
 
 
 def parse_arguments():
@@ -218,6 +236,7 @@ def parse_arguments():
     return parser.parse_args()
 
 
+@catch_tftp_errors
 def main():
     """Main entry point for TFTP client."""
     args = parse_arguments()
@@ -229,19 +248,12 @@ def main():
             client.get(args.remote, args.local)
         elif args.command == "put":
             client.put(args.local, args.remote)
-
-    except KeyboardInterrupt:
-        logger.info("Transfer interrupted by user")
-        sys.exit(0)
     except ConnectionResetError:
-        logger.error(
+        raise TFTPError(
             "Target server not found or unavailable. "
-            "Make sure the TFTP server is running on the correct port."
+            "Make sure the TFTP server is running on the correct port.",
+            TFTPErrorCode.NOT_DEFINED,
         )
-        sys.exit(1)
-    except Exception as e:
-        logger.error(f"Client error: {e}")
-        sys.exit(1)
     finally:
         if hasattr(client, "socket") and client.socket:
             client.socket.close()
