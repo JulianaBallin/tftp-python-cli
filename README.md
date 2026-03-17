@@ -49,11 +49,15 @@ Este projeto utilizou IA (ChatGPT e DeepSeek) para auxiliar na revisão de códi
 ├── 📄 README.md                 # Documentação principal
 ├── 📁 tests/                    # Testes unitários
 │   └── 📄 test_tftp_packets.py
-├── 📁 storage/                  # Diretório de arquivos (ignorado)
+│   └── 📄 test_client.py
+├── 📁 storage/                  # Diretório de arquivos
 │   └── 📄 .gitkeep
-└── 📁 docs/                     # Documentação adicional
+└── 📁 docs/                     # Documentação
     └── 📁 diagrams/              # Diagramas C4
-        └── 📄 component-diagram.md
+        └── 📄 01_contexto.png
+        └── 📄 02_containers.png
+        └── 📄 03_componentes_servidor.png
+        └── 📄 04_codigo.png               
 ```
 
 ## Visão geral do protocolo TFTP
@@ -70,21 +74,7 @@ O TFTP é um protocolo simples de transferência de arquivos baseado em UDP. Ele
 
 ## Diagrama C4 - Nível de Componentes
 
-```mermaid
-flowchart TD
-    U[👤 Usuário / Cliente TFTP] --> CLI1[💻 CLI do Cliente]
-    CLI1 --> CC[⚙️ Client Core]
-    CC --> P1[📦 Protocol Encoder/Decoder]
-    P1 --> NET[(🌐 UDP Socket)]
-
-    EXT[🖥️ Cliente TFTP externo<br/>Windows/Linux/Mac] --> SRVCLI[💻 CLI do Servidor]
-    SRVCLI --> SC[⚙️ Server Core]
-    SC --> P2[📦 Protocol Encoder/Decoder]
-    P2 --> NET2[(🌐 UDP Socket)]
-    SC --> FS[(📁 Diretório de arquivos)]
-
-    NET --- NET2
-```
+![Diagrama de componentes do servidor](docs/diagrams/03_componentes_servidor.png "C4 - Componentes do Servidor TFTP")
 
 ## Componentes do sistema
 
