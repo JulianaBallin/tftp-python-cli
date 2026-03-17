@@ -71,19 +71,33 @@ O TFTP é um protocolo simples de transferência de arquivos baseado em UDP. Ele
 ## Diagrama C4 - Nível de Componentes
 
 ```mermaid
-flowchart TD
-    U[👤 Usuário / Cliente TFTP] --> CLI1[💻 CLI do Cliente]
-    CLI1 --> CC[⚙️ Client Core]
-    CC --> P1[📦 Protocol Encoder/Decoder]
-    P1 --> NET[(🌐 UDP Socket)]
+C4Component
+    title Diagrama de Componentes do Sistema TFTP
 
-    EXT[🖥️ Cliente TFTP externo<br/>Windows/Linux/Mac] --> SRVCLI[💻 CLI do Servidor]
-    SRVCLI --> SC[⚙️ Server Core]
-    SC --> P2[📦 Protocol Encoder/Decoder]
-    P2 --> NET2[(🌐 UDP Socket)]
-    SC --> FS[(📁 Diretório de arquivos)]
+    Container_Boundary(client_app, "TFTP Client App") {
+        Component(cli_client, "CLI do Cliente", "Python/Argparse", "Interface de linha de comando para usuários.")
+        Component(client_core, "Client Core", "Python/Socket", "Gerencia o fluxo de transferência (RRQ/WRQ).")
+    }
 
-    NET --- NET2
+    Container_Boundary(server_app, "TFTP Server App") {
+        Component(cli_server, "CLI do Servidor", "Python/Argparse", "Interface de inicialização do servidor.")
+        Component(server_core, "Server Core", "Python/Socket", "Gerencia múltiplas requisições e sockets de transferência.")
+        Component(fs, "Sistema de Arquivos", "Local Disk", "Armazena arquivos no diretório 'storage'.")
+    }
+
+    Component(packets, "Protocol Encoder/Decoder", "Python/Struct", "Codifica e decodifica pacotes TFTP (RFC 1350).")
+    Component(errors, "Error Handling", "Python/Enum", "Centraliza códigos e mensagens de erro.")
+
+    Rel(cli_client, client_core, "Usa")
+    Rel(client_core, packets, "Usa")
+    Rel(client_core, errors, "Usa")
+
+    Rel(cli_server, server_core, "Usa")
+    Rel(server_core, packets, "Usa")
+    Rel(server_core, errors, "Usa")
+    Rel(server_core, fs, "Lê/Escreve")
+
+    Rel(client_core, server_core, "Envia pacotes UDP", "Porta 6969")
 ```
 
 ## Componentes do sistema
@@ -152,7 +166,55 @@ python client.py get --host 127.0.0.1 --port 6969 --remote sample.txt --local do
 python client.py put --host 127.0.0.1 --port 6969 --local sample.txt --remote uploaded.txt
 ```
 
-## Testes
+## Como Testar (Passo a Passo)
+
+### 1. Preparação
+Certifique-se de que as dependências estão instaladas:
+```bash
+pip install -r requirements.txt
+```
+
+### 2. Iniciar o Servidor
+Abra um terminal e execute:
+```bash
+python server.py --host 127.0.0.1 --port 6969 --directory storage
+```
+
+### 3. Testar Download (GET)
+Em outro terminal, crie um arquivo no servidor e tente baixá-lo:
+```bash
+# Criar arquivo no servidor
+echo "Teste de download" > storage/test_get.txt
+
+# Baixar usando nosso cliente
+python client.py get --host 127.0.0.1 --port 6969 --remote test_get.txt --local baixado.txt
+
+# Verificar conteúdo
+type baixado.txt  # Windows
+cat baixado.txt   # Linux/Mac
+```
+
+### 4. Testar Upload (PUT)
+Crie um arquivo local e envie para o servidor:
+```bash
+# Criar arquivo local
+echo "Teste de upload" > para_enviar.txt
+
+# Enviar usando nosso cliente
+python client.py put --host 127.0.0.1 --port 6969 --local para_enviar.txt --remote enviado.txt
+
+# Verificar se chegou no servidor
+type storage\enviado.txt  # Windows
+cat storage/enviado.txt   # Linux/Mac
+```
+
+### 5. Testar com Cliente TFTP do Windows
+Certifique-se de que o "Cliente TFTP" está ativado nos "Recursos do Windows".
+```powershell
+tftp -i 127.0.0.1 GET test_get.txt windows_get.txt
+```
+
+## Testes unitários
 
 ### Executar testes unitários
 ```bash

@@ -199,6 +199,92 @@ class TFTPServer:
                 except OSError as exc:
                     logger.warning(f"Could not remove incomplete file {file_path}: {exc}")
         
+    def _handle_read_request(self, filename: str, client_addr: Tuple[str, int]) -> None:
+        """Handle RRQ operation (client downloads a file from server)."""
+        file_path = self._safe_path(filename)
+        if not file_path:
+            self._send_error(
+                self.socket,
+                client_addr,
+                ErrorCode.ACCESS_VIOLATION,
+                "Invalid filename or path traversal attempt"
+            )
+            return
+
+        if not os.path.exists(file_path):
+            self._send_error(self.socket, client_addr, ErrorCode.FILE_NOT_FOUND, "File not found")
+            return
+
+        if os.path.isdir(file_path):
+            self._send_error(self.socket, client_addr, ErrorCode.ACCESS_VIOLATION, "Target is a directory")
+            return
+
+        transfer_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        transfer_socket.settimeout(self.timeout_seconds)
+
+        success = False
+        retries = 0
+        block_number = 1
+
+        try:
+            logger.info(f"Starting RRQ for {client_addr} -> {file_path}")
+
+            with open(file_path, 'rb') as input_file:
+                while True:
+                    data = input_file.read(TFTPPacket.MAX_DATA_SIZE)
+                    packet = TFTPPacket.encode_data(block_number, data)
+                    
+                    # Send DATA packet and wait for ACK
+                    while True:
+                        transfer_socket.sendto(packet, client_addr)
+                        
+                        try:
+                            resp, addr = transfer_socket.recvfrom(4 + TFTPPacket.MAX_DATA_SIZE)
+                        except socket.timeout:
+                            retries += 1
+                            if retries > self.max_retries:
+                                logger.warning(f"Timeout waiting for ACK {block_number} from {client_addr}")
+                                return
+                            logger.debug(f"Retrying DATA {block_number} (attempt {retries})")
+                            continue
+
+                        if addr != client_addr:
+                            self._send_error(transfer_socket, addr, ErrorCode.UNKNOWN_TID, "Unknown transfer ID")
+                            continue
+
+                        try:
+                            opcode, decoded = TFTPPacket.decode(resp)
+                        except ValueError:
+                            self._send_error(transfer_socket, client_addr, ErrorCode.ILLEGAL_OPERATION, "Malformed packet")
+                            return
+
+                        if opcode == Opcode.ACK:
+                            if decoded == block_number:
+                                # Success, move to next block
+                                retries = 0
+                                block_number = (block_number + 1) % 65536
+                                break
+                            elif decoded == (block_number - 1) % 65536:
+                                # Duplicate ACK for previous block, ignore and re-send current (next loop)
+                                continue
+                        elif opcode == Opcode.ERROR:
+                            error_code, message = decoded
+                            logger.warning(f"Client {client_addr} aborted RRQ with error {error_code}: {message}")
+                            return
+                        else:
+                            self._send_error(transfer_socket, client_addr, ErrorCode.ILLEGAL_OPERATION, "Expected ACK")
+                            return
+
+                    if len(data) < TFTPPacket.MAX_DATA_SIZE:
+                        success = True
+                        logger.info(f"RRQ completed for {filename} to {client_addr}")
+                        break
+        except OSError as exc:
+            logger.error(f"File read error for {file_path}: {exc}")
+            self._send_error(self.socket, client_addr, ErrorCode.NOT_DEFINED, "Unable to read file")
+        finally:
+            transfer_socket.close()
+
     def start(self) -> None:
         """Start the TFTP server and begin listening for requests."""
         logger.info(f"Starting TFTP server on {self.host}:{self.port}")
@@ -223,12 +309,8 @@ class TFTPServer:
                 filename = decoded
                 self._handle_write_request(filename, client_addr)
             elif opcode == Opcode.RRQ:
-                self._send_error(
-                    self.socket,
-                    client_addr,
-                    ErrorCode.ILLEGAL_OPERATION,
-                    "RRQ not implemented in this feature branch"
-                )
+                filename = decoded
+                self._handle_read_request(filename, client_addr)
             else:
                 self._send_error(
                     self.socket,
