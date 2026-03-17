@@ -49,11 +49,15 @@ Este projeto utilizou IA (ChatGPT e DeepSeek) para auxiliar na revisão de códi
 ├── 📄 README.md                 # Documentação principal
 ├── 📁 tests/                    # Testes unitários
 │   └── 📄 test_tftp_packets.py
-├── 📁 storage/                  # Diretório de arquivos (ignorado)
+│   └── 📄 test_client.py
+├── 📁 storage/                  # Diretório de arquivos
 │   └── 📄 .gitkeep
-└── 📁 docs/                     # Documentação adicional
+└── 📁 docs/                     # Documentação
     └── 📁 diagrams/              # Diagramas C4
-        └── 📄 component-diagram.md
+        └── 📄 01_contexto.png
+        └── 📄 02_containers.png
+        └── 📄 03_componentes_servidor.png
+        └── 📄 04_codigo.png               
 ```
 
 ## Visão geral do protocolo TFTP
@@ -99,6 +103,7 @@ C4Component
 
     Rel(client_core, server_core, "Envia pacotes UDP", "Porta 6969")
 ```
+![Diagrama de componentes do servidor](docs/diagrams/03_componentes_servidor.png "C4 - Componentes do Servidor TFTP")
 
 ## Componentes do sistema
 
@@ -276,7 +281,7 @@ Utilizamos o padrão [Conventional Commits](https://www.conventionalcommits.org/
 - `feat/initial-structure` - estrutura inicial do projeto (Juliana)
 - `feat/packet-encoding-decoding` - implementação dos pacotes (Juliana)
 - `feat/client-get` - cliente download (João Lucas)
-- `feat/client-put` - cliente upload (João Lucas)
+- `feat/client-put` - cliente upload (Lucas Carvalho)
 - `feat/server-read` - servidor leitura (Leonardo Castro)
 - `feat/server-write` - servidor escrita (Leonardo Melo)
 - `feat/error-handling` - tratamento de erros (Renato)
