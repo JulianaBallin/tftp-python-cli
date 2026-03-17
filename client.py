@@ -207,9 +207,108 @@ class TFTPClient:
     def get(self, remote_filename: str, local_filename: str) -> None:
         """
         Download a file from the server (RRQ).
-        To be implemented by another team member.
         """
-        raise TFTPError("GET operation not implemented yet.", TFTPErrorCode.ILLEGAL_OP)
+        logger.info(
+            f"Starting download of {remote_filename} from "
+            f"{self.host}:{self.port} to {local_filename}"
+        )
+
+        # 1. Send RRQ and prepare for transfer
+        rrq_packet = TFTPPacket.encode_rrq(remote_filename)
+        self.socket.sendto(rrq_packet, self.server_address)
+
+        server_tid = None
+        expected_block = 1
+        success = False
+
+        timeout_handler = TimeoutHandler(
+            max_retries=self.MAX_RETRIES, timeout=self.TIMEOUT
+        )
+
+        try:
+            with open(local_filename, "wb") as f:
+                while True:
+                    self.socket.settimeout(timeout_handler.get_current_timeout())
+                    try:
+                        data, address = self.socket.recvfrom(4096)
+
+                        if server_tid is None:
+                            server_tid = address
+                        elif address != server_tid:
+                            logger.warning(
+                                f"Received packet from {address}, expected {server_tid}"
+                            )
+                            send_error_response(
+                                self.socket,
+                                address,
+                                TFTPErrorCode.UNKNOWN_TID,
+                                ErrorMessages.messages.get(
+                                    TFTPErrorCode.UNKNOWN_TID, ""
+                                ),
+                            )
+                            continue
+
+                        opcode, decoded_data = TFTPPacket.decode(data)
+
+                        if opcode == Opcode.ERROR:
+                            error_code, error_msg = decoded_data
+                            raise TFTPError(error_msg, error_code)
+
+                        if opcode == Opcode.DATA:
+                            block_number, file_data = decoded_data
+
+                            if block_number == expected_block:
+                                f.write(file_data)
+                                f.flush()
+                                # Send ACK
+                                ack_packet = TFTPPacket.encode_ack(block_number)
+                                self.socket.sendto(ack_packet, server_tid)
+                                logger.debug(f"Received DATA block {block_number}, sent ACK")
+
+                                if len(file_data) < 512:
+                                    success = True
+                                    logger.info(
+                                        f"Download of {remote_filename} completed successfully"
+                                    )
+                                    break
+
+                                # Increment expected block (wrap around at 65535)
+                                expected_block = (expected_block % 65535) + 1
+                                timeout_handler.reset()
+                            elif block_number == (expected_block - 1 if expected_block > 1 else 65535):
+                                # Duplicate DATA, re-send ACK for last received block
+                                ack_packet = TFTPPacket.encode_ack(block_number)
+                                self.socket.sendto(ack_packet, server_tid)
+                                logger.debug(f"Received duplicate DATA block {block_number}, re-sent ACK")
+                            else:
+                                logger.warning(
+                                    f"Unexpected block number {block_number}, "
+                                    f"expected {expected_block}"
+                                )
+
+                    except socket.timeout:
+                        if not timeout_handler.should_retry():
+                            raise TFTPError(
+                                f"Timeout waiting for DATA block {expected_block}",
+                                TFTPErrorCode.NOT_DEFINED,
+                            )
+                        logger.info(
+                            f"Timeout, retransmitting last request (Attempt "
+                            f"{timeout_handler.attempt}/{timeout_handler.max_retries})"
+                        )
+                        if expected_block == 1:
+                            # Re-send RRQ
+                            self.socket.sendto(rrq_packet, self.server_address)
+                        else:
+                            # Re-send last ACK
+                            last_ack_block = (expected_block - 1 if expected_block > 1 else 65535)
+                            ack_packet = TFTPPacket.encode_ack(last_ack_block)
+                            self.socket.sendto(ack_packet, server_tid)
+
+        except (IOError, TFTPError) as e:
+            if os.path.exists(local_filename):
+                os.remove(local_filename)
+            raise e
 
 
 def parse_arguments():
